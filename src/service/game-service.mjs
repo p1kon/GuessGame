@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { PredictorEngine, restoreState, APP_VERSION, validBit } from '../core/index.mjs';
 import { SqliteRepository } from './sqlite-repository.mjs';
+import { pruneSnapshots, snapshotMetrics } from './snapshot-retention.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const algorithmChecksum = hash(readFileSync(new URL('../core/predictor.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
@@ -195,6 +196,7 @@ export class GameService {
       const json = JSON.stringify(engine.exportState());
       this.repository.run('INSERT INTO predictor_snapshots VALUES (?,?,?,?)', id, row.seq, json, hash(json));
       this.repository.run('UPDATE participants SET revision=? WHERE id=?', row.seq, id);
+      pruneSnapshots(this.repository, id, row.seq);
       return this.view(row, session);
     });
   }
@@ -207,6 +209,7 @@ export class GameService {
         id, this.now(), participant.revision, old?.state_json ?? null, old?.checksum ?? null);
       const json = JSON.stringify(engine.exportState());
       this.repository.run('INSERT OR REPLACE INTO predictor_snapshots VALUES (?,?,?,?)', id, participant.revision, json, hash(json));
+      pruneSnapshots(this.repository, id, participant.revision);
       return engine.exportState();
     });
   }
@@ -278,8 +281,24 @@ export class GameService {
         baseline, hash(baseline), engine.state.total, id);
       const json = JSON.stringify(engine.exportState());
       this.repository.run('INSERT INTO predictor_snapshots VALUES (?,?,?,?)', id, engine.state.total, json, hash(json));
+      pruneSnapshots(this.repository, id, engine.state.total);
       if (JSON.stringify(this.replayEngine(id).exportState()) !== json) fail('IMPORT_REPLAY_MISMATCH');
       return result;
+    });
+  }
+  compactSnapshots() {
+    return this.repository.transaction(() => {
+      const before = snapshotMetrics(this.repository);
+      const participants = this.repository.all('SELECT id,revision FROM participants');
+      for (const participant of participants) {
+        const saved = JSON.stringify(this.engine(participant.id).exportState());
+        const replayed = JSON.stringify(this.replayEngine(participant.id).exportState());
+        if (saved !== replayed) fail('STATE_EVENT_MISMATCH');
+        pruneSnapshots(this.repository, participant.id, participant.revision);
+      }
+      const after = snapshotMetrics(this.repository);
+      return { participants: participants.length, snapshotsBefore: before.snapshots, snapshotsAfter: after.snapshots,
+        payloadBytesBefore: before.payloadBytes, payloadBytesAfter: after.payloadBytes };
     });
   }
 }

@@ -10,9 +10,12 @@ jobs:
         node: ['22', '26']
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
       - run: npm run build
+      - run: npm run check:public
       - run: npm test
       - run: npm run test:equivalence
