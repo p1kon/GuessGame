@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Самообучающаяся угадайка 2.3.2 · Исследовательский стенд</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 20px; color: #222; }
+  h1 { font-size: 22px; }
+  button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer;
+           border-radius: 8px; border: 1px solid #ccc; background: #f5f5f5; }
+  button:hover { background: #e8e8e8; }
+  button.primary { background: #4a90e2; color: white; border-color: #4a90e2; }
+  button.primary:hover { background: #3a7bc8; }
+  .guess { font-size: 72px; text-align: center; font-weight: bold; margin: 20px 0; }
+  #feedback { text-align: center; color: #777; min-height: 22px; }
+  .stats { font-size: 13px; color: #555; margin-top: 24px;
+           border-top: 1px solid #eee; padding-top: 16px; }
+  .stats table { width: 100%; border-collapse: collapse; }
+  .stats td { padding: 2px 6px; }
+  .hidden { display: none !important; }
+  h2 { font-size: 19px; margin: 16px 0 10px; }
+  .viewtabs { display: flex; gap: 8px; margin: 14px 0 22px; }
+  .viewtabs button { flex: 1; margin: 0; padding: 11px 7px; }
+  .labgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .labgrid label { font-size: 13px; font-weight: 600; display: flex; flex-direction: column; gap: 7px; }
+  .labgrid input[type=range] { width: 100%; accent-color: #387cd5; }
+  .labgrid input[type=number], .labgrid select { min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 6px; font-size: 13px; border: 1px solid #aaa; border-radius: 6px; background: #fff; }
+  .labgrid output { color: #555; font-weight: normal; }
+  .labnote { font-size: 12px; line-height: 1.5; padding: 12px; border-left: 3px solid #9bb4cb; background: #f5f8fb; }
+  .labactions { display: flex; flex-wrap: wrap; }
+  .labactions button { padding: 8px 12px; font-size: 13px; }
+  #labStatus { font-size: 13px; color: #555; min-height: 25px; margin: 12px 0; }
+  #labResults { font-size: 13px; line-height: 1.5; }
+  #labResults table { border-collapse: collapse; width: 100%; }
+  #labResults td, #labResults th { text-align: left; padding: 5px; border-bottom: 1px solid #e2e2e2; }
+  .labbox { padding: 12px; border: 1px solid #ddd; border-radius: 10px; margin: 12px 0; overflow: hidden; }
+  .labmetrics { display: flex; flex-wrap: wrap; gap: 12px; }
+  .labmetric { min-width: 95px; flex: 1; }
+  .labmetric strong { display: block; font-size: 22px; }
+  .labchart { width: 100%; height: auto; display: block; }
+  .labbox { overflow-x:auto; }
+  .labbox table { min-width: 380px; }
+  .labactions button { flex: 1 1 155px; }
+  @media(max-width:420px) { body { margin: 12px auto; padding: 12px; } .labgrid { grid-template-columns: 1fr; gap: 9px; } .labgrid label { gap: 4px; } }
+</style>
+</head>
+<body>
+<h1>Самообучающаяся угадайка <small style="font-size:13px;color:#888">v2.3.2</small></h1>
+<nav class="viewtabs" aria-label="Режим работы">
+<button type="button" id="tabManual" class="primary" aria-pressed="true">Играть самому</button>
+<button type="button" id="tabLab" aria-pressed="false">Лаборатория</button>
+</nav>
+<section id="manualView">
+<div id="persistenceNotice" class="hidden" role="alert" aria-live="assertive" style="padding:12px; margin:10px 0; border:2px solid #a54b2f; background:#fff1ec; border-radius:8px; font-size:13px">
+  <strong id="persistenceStatus">Несохранённые данные</strong>
+  <div id="persistenceDetail" style="margin:6px 0"></div>
+  <button id="btnRetrySave" type="button">Повторить сохранение</button>
+  <button id="btnRecovery" type="button">Скачать сырой архив хранилища</button>
+</div>
+<p>Загадай в голове 0 или 1, затем нажми «Угадай». После моей попытки подтверди, угадал ли я.</p>
+
+<div class="guess" id="guessDisplay">?</div>
+<div id="feedback"></div>
+
+<div id="step1">
+  <button id="btnGuess" class="primary">Угадай</button>
+</div>
+<div id="step2" class="hidden">
+  <p>Что вы загадали?</p>
+  <button id="btnZero">0</button>
+  <button id="btnOne">1</button>
+</div>
+
+<button id="btnReset" style="margin-top:20px">Сбросить статистику</button>
+<label style="margin-left:12px; user-select:none; cursor:pointer;">
+  <input type="checkbox" id="chkBlind" style="margin-right:6px;">
+  Слепой режим
+</label>
+<button id="btnExport" style="margin-top:20px">Экспорт</button>
+<button id="btnRecoveryAlways" style="margin-top:20px;font-size:12px">Архив восстановления</button>
+<button id="btnImport" style="margin-top:20px">Импорт</button>
+<button id="btnBenchmark" style="margin-top:20px">Проверить модели</button>
+<input type="file" id="fileInput" accept=".json,application/json" class="hidden">
+
+<div class="stats" id="stats"></div>
+<div class="stats" id="patternPanel"></div>
+<div class="stats" id="benchmarkPanel" aria-live="polite"></div>
+
+</section>
+<section id="labView" class="hidden" aria-label="Экспериментальная лаборатория">
+  <h2>Исследовательский стенд · ИНР v0.2</h2>
+  <p>Независимые испытания <b>неизменённого</b> виртуального игрока ИНР v0.2 против 16 экспертов с разными способами объединения. Искусственные ходы никогда не записываются в ручную историю.</p>
+  <div class="labnote">Параметры фиксируются на весь прогон. Игрок решает, продолжить бит или сменить его, <b>до того</b>, как узнаёт текущий прогноз компьютера. Алгоритм детерминированный: это экспериментальная гипотеза, не доказанная модель человека.</div>
+  <div class="labgrid">
+    <label>Инерция I <output id="valueI">0.70</output><input id="cfgI" type="range" min="0" max="1" value="0.70" step="0.05"></label>
+    <label>Насыщение S <output id="valueS">0.80</output><input id="cfgS" type="range" min="0" max="1" value="0.80" step="0.05"></label>
+    <label>Память M <output id="valueM">5</output><input id="cfgM" type="range" min="1" max="20" value="5" step="1"></label>
+    <label>Контроль C <output id="valueC">0.65</output><input id="cfgC" type="range" min="0" max="1" value="0.65" step="0.05"></label>
+    <label>Познавательный интерес Q <output id="valueQ">0.50</output><input id="cfgQ" type="range" min="0" max="1" value="0.50" step="0.05"></label>
+    <label>Эмоциональность E <output id="valueE">0.60</output><input id="cfgE" type="range" min="0" max="1" value="0.60" step="0.05"></label>
+    <label>Инерция эмоций D <output id="valueD">0.70</output><input id="cfgD" type="range" min="0" max="1" value="0.70" step="0.05"></label>
+    <label>Цель G <output id="valueG">−1.00</output>
+      <input id="cfgG" type="range" min="-1" max="1" value="-1" step="0.05">
+      <span style="color:#666;font-size:11px;font-weight:normal">−1 против · 0 нейтрально · +1 за компьютер</span>
+    </label>
+  </div>
+  <div class="labgrid">
+    <label>Количество ходов <input type="number" id="labTurns" value="1000" min="1" max="10000" step="1"></label>
+    <label>Ходов в сессии <input type="number" id="labSessionSize" value="100" min="1" max="10000" step="1"></label>
+    <label>Начальный бит каждой сессии
+      <select id="labInitialBit"><option value="0">0</option><option value="1">1</option><option value="alternate">0, 1, 0, 1…</option></select>
+    </label>
+    <label>Начальное состояние предсказателя
+      <select id="labPredictorStart"><option value="fresh">Новый, необученный</option><option value="trained">Копия моей ручной истории</option></select>
+    </label>
+  </div>
+  <div class="labgrid">
+    <label>Агрегатор для одиночного прогона
+      <select id="labAggregator">
+        <option value="baseline">Эталон: Fixed-Share Hedge 2.2</option>
+        <option value="slow">Медленный Hedge (η=0,08)</option>
+        <option value="fast">Быстрый Hedge (η=0,9)</option>
+        <option value="multi">Три скорости + мета-веса</option>
+      </select>
+    </label>
+    <label>Окно диагностики <select id="labWindow"><option value="50">50 ходов</option><option value="100">100 ходов</option></select></label>
+  </div>
+  <div class="labactions">
+    <button class="primary" id="labRun">Запустить</button>
+    <button id="labCompare">Сравнить G</button>
+    <button id="labCompareAggregators">Сравнить агрегаторы</button>
+    <button id="labBattery">Батарея: разработка</button>
+    <button id="labAudit">Резервные сценарии</button>
+    <button id="labCancel" disabled>Остановить</button>
+    <button id="labExport" disabled>Экспорт эксперимента</button>
+  </div>
+  <p class="labnote"><b>Методика:</b> каждый агрегатор играет с собственной независимой копией ИНР. Последовательности могут отличаться: это корректное сравнение замкнутых контуров, а не точный парный эксперимент по одним битам. Сценарии «резерв» не используйте для подбора параметров. Пакетные батареи: до 2000 ходов на сценарий; одиночный прогон: до 10 000.</p>
+  <div id="labStatus" role="status" aria-live="polite">Эксперименты ещё не запускались.</div>
+  <div id="labResults"></div>
+</section>
+
+<script>
+/* GUESSGAME_BUNDLE */
+</script>
+</body>
+</html>

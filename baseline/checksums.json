@@ -1,0 +1,10 @@
+{
+  "release": "2.3.2",
+  "commit": "9ef0c34",
+  "files": {
+    "GuessGame_v2.3.2.html": "35f2e867c3390a46de5fa6739f38078339076854c9222128920844a0259955b2",
+    "CODE_DOCUMENTATION_v2.3.2.md": "687abf7ce5ac2e9a0b78b719fe646982b9ba9d34f882ea2d2412d14d70fc435e",
+    "README_v2.3.2.md": "1a194e44e6016657969798eaf46c27ea76926973a3a95dd34aa41e0aa62974c9",
+    "RELEASE_DECISIONS_v2.3.2.md": "f0703f3b805822abfd39d1c3ec1d8e76856fdc511a0b861555a60f1cfecaed9e"
+  }
+}

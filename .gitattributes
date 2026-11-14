@@ -1,0 +1,5 @@
+* text=auto eol=lf
+GuessGame_v2.3.2.html -text
+CODE_DOCUMENTATION_v2.3.2.md -text
+README_v2.3.2.md -text
+RELEASE_DECISIONS_v2.3.2.md -text

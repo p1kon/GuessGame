@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+private/
+*.db
+*.db-*
+*.sqlite*
+guessGameState*.json
+GuessGameStorageRecovery*.json
