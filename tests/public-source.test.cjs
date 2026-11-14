@@ -22,4 +22,8 @@ test('publication guard blocks a gameplay export and credentials without echoing
   fs.writeFileSync(path.join(cwd, 'README.md'), 'Synthetic test repository');
   execFileSync('git', ['add', 'README.md'], { cwd });
   assert.equal(run().status, 0);
+  fs.writeFileSync(path.join(cwd, 'large.txt'), secret + '\n' + 'x'.repeat(2 * 1024 * 1024));
+  execFileSync('git', ['add', 'large.txt'], { cwd });
+  const large = run(); assert.equal(large.status, 1);
+  assert.equal((large.stderr + large.stdout).includes(secret), false);
 });
