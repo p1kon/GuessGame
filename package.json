@@ -1,0 +1,18 @@
+{
+  "name": "guessgame",
+  "version": "2.3.2",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "demo:service": "node scripts/service-demo.mjs",
+    "telegram:check": "node --env-file=.env scripts/telegram-bot.mjs --check",
+    "telegram:start": "node --env-file=.env scripts/telegram-bot.mjs",
+    "telegram:import": "node --env-file=.env scripts/import-history.mjs",
+    "web:start": "node --env-file=.env scripts/web-server.mjs",
+    "test:browser": "node scripts/build.cjs && node scripts/browser-smoke.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:equivalence": "node scripts/build.cjs && node verify_equivalence.js GuessGame_v2.3.2.html dist/GuessGame_next.html"
+  },
+  "engines": { "node": ">=22.13" }
+}

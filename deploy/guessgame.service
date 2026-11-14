@@ -1,0 +1,27 @@
+[Unit]
+Description=GuessGame private Telegram bot
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=60
+
+[Service]
+Type=simple
+User=guessgame
+Group=guessgame
+WorkingDirectory=/opt/guessgame/current
+Environment=NODE_ENV=production
+Environment=TELEGRAM_DB_PATH=/var/lib/guessgame/telegram.sqlite
+ExecStart=/opt/guessgame/node/bin/node --env-file=/etc/guessgame/guessgame.env scripts/telegram-bot.mjs
+Restart=on-failure
+RestartSec=20
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/guessgame
+
+[Install]
+WantedBy=multi-user.target

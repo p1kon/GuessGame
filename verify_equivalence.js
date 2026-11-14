@@ -6,7 +6,8 @@
  * контексте Node и прогоняет одинаковые сценарии на двух версиях файла,
  * сравнивая результаты побитово (JSON с сортировкой ключей).
  *
- * Использование:  node verify_equivalence.js <оригинал.html> <рефактор.html>
+ * Использование: node verify_equivalence.js <оригинал.html> <рефактор.html> [private-state.json]
+ * Без private-state.json используется явно синтетическая история.
  * Выход: PASS/FAIL по каждому тесту; при FAIL — первый различающийся путь.
  */
 'use strict';
@@ -35,7 +36,7 @@ function makeSandbox() {
     localStorage: {
       _m: new Map(),
       getItem(k) { return this._m.has(k) ? this._m.get(k) : null; },
-      setItem(k, v) { this._m.set(String(v)); this._m.set(k, String(v)); },
+      setItem(k, v) { this._m.set(String(k), String(v)); },
       removeItem(k) { this._m.delete(k); },
     },
     result: {},
@@ -58,7 +59,7 @@ function loadCore(htmlPath) {
 function stable(v) {
   if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'undefined';
   if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
-  if (v instanceof Map) return stable(Array.from(v.entries()));
+  if (Object.prototype.toString.call(v) === '[object Map]') return stable(Array.from(v.entries()));
   const keys = Object.keys(v).sort();
   return '{' + keys.map(k => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}';
 }
@@ -89,9 +90,8 @@ function firstDiff(a, b, p = '', out = { path: null }) {
 /* Снимок состояния движка без ссылок на Map-поля (через exportState). */
 function engineFingerprint(eng) {
   const st = eng.exportState();
-  return { weights: st.weights, sgd: st.sgd, lastPrediction: st.lastPrediction,
-           correct: st.correct, total: st.total, history: st.history,
-           predictions: st.predictions };
+  delete st.algorithmVersion;
+  return st;
 }
 
 const TESTS = [];
@@ -99,8 +99,8 @@ function test(name, fn) { TESTS.push({ name, fn }); }
 
 /* ---------------- Сценарии ---------------- */
 
-test('T1. Загрузка legacy-JSON 2.2 (1200 ходов) и экспорт состояния', (A, B) => {
-  const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+test('T1. Загрузка истории и экспорт полного состояния', (A, B) => {
+  const raw = INPUT_STATE;
   const run = (sb) => {
     const st = sb.restoreState(JSON.parse(JSON.stringify(raw)));
     const eng = new sb.__api.PredictorEngine(st);
@@ -114,7 +114,7 @@ test('T1. Загрузка legacy-JSON 2.2 (1200 ходов) и экспорт �
 });
 
 test('T2. 32 ручных хода поверх legacy-истории (снимки прогнозов, веса, SGD)', (A, B) => {
-  const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+  const raw = INPUT_STATE;
   const run = (sb) => {
     const eng = new sb.__api.PredictorEngine(sb.restoreState(JSON.parse(JSON.stringify(raw))));
     // Детерминированный фрагмент: продолжение реальной истории + альтернанс
@@ -136,7 +136,7 @@ test('T2. 32 ручных хода поверх legacy-истории (сним�
 });
 
 test('T3. replay() с benchmark по всей истории (measureLast 500)', (A, B) => {
-  const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+  const raw = INPUT_STATE;
   const run = (sb) => {
     const r = sb.replay(raw.history, raw.moveTimes,
                         { collectBenchmark: true, measureLast: 500 });
@@ -150,7 +150,7 @@ test('T3. replay() с benchmark по всей истории (measureLast 500)',
 });
 
 test('T4. Абляция replay exclude=ppm', (A, B) => {
-  const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+  const raw = INPUT_STATE;
   const run = (sb) => {
     const r = sb.replay(raw.history, raw.moveTimes,
                         { exclude: 'ppm', collectScore: true, measureLast: 500 });
@@ -167,6 +167,8 @@ test('T5. Эталонная симуляция 600 ходов, baseline (кон
       sessionSize: 100, startState: null, initialBit: 0, alternateStart: false,
       aggregator: 'baseline', goalSchedule: [] });
     while (r.step() !== null) {}
+    if (r.summary().hits !== 413 || r.summary().n !== 600)
+      throw new Error('Контрольный результат должен быть 413/600');
     const ex = r.export();
     delete ex.version; // метка версии приложения меняется в 2.3.1 намеренно
     return { history: r.history, weightTrace: r.weightTrace, summary: r.summary(),
@@ -187,7 +189,7 @@ test('T6. Симуляция 300 ходов, multi + внешняя смена G
 });
 
 test('T7. Симуляция 200 ходов, fast-агрегатор, старт из обученной копии', (A, B) => {
-  const raw = JSON.parse(fs.readFileSync(JSON_PATH, 'utf8'));
+  const raw = INPUT_STATE;
   const run = (sb) => {
     const startState = sb.__api.hydrateState(JSON.parse(JSON.stringify(
       new sb.__api.PredictorEngine(sb.restoreState(JSON.parse(JSON.stringify(raw)))).exportState())));
@@ -204,8 +206,6 @@ test('T7. Симуляция 200 ходов, fast-агрегатор, старт
 /* ---------------- Запуск ---------------- */
 
 const [, , OLD_FILE, NEW_FILE, JSON_PATH_ARG] = process.argv;
-const JSON_PATH = JSON_PATH_ARG ||
-  '/home/z/my-project/upload/guessGameState_2026-11-08 (3).json';
 if (!OLD_FILE || !NEW_FILE) {
   console.error('Использование: node verify_equivalence.js <old.html> <new.html> [state.json]');
   process.exit(2);
@@ -213,6 +213,17 @@ if (!OLD_FILE || !NEW_FILE) {
 
 const A = loadCore(OLD_FILE);
 const B = loadCore(NEW_FILE);
+const INPUT_STATE = JSON_PATH_ARG ? JSON.parse(fs.readFileSync(JSON_PATH_ARG, 'utf8')) : (() => {
+  const engine = new A.__api.PredictorEngine();
+  for (let i = 0; i < 1200; i++) {
+    const at = 1700000000000 + i * 5000 + Math.floor(i / 100) * 600000;
+    engine.update((i * 7 + Math.floor(i / 5)) % 2, engine.predict(at, false),
+      { answeredAt: at + 1000, source: 'simulated' });
+  }
+  return JSON.parse(JSON.stringify(engine.exportState()));
+})();
+console.log(JSON_PATH_ARG ? 'Вход: приватный JSON (содержимое не выводится)' :
+  'Вход: синтетическая история, НЕ реальные человеческие данные');
 
 let failed = 0;
 for (const t of TESTS) {

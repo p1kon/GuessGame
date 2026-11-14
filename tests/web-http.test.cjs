@@ -1,0 +1,51 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+test('web API enforces login, Origin and CSRF, isolates players and shares bot turns', async t => {
+  const { GameService } = await import('../src/service/game-service.mjs');
+  const { WebAccounts } = await import('../src/web/accounts.mjs');
+  const { createWebServer } = await import('../src/web/server.mjs');
+  const service = new GameService(':memory:');
+  const accounts = new WebAccounts(service, { registrationCode: 'test-code', consentText: 'Synthetic', source: 'simulated' });
+  const server = createWebServer({ service, accounts, origin: 'http://localhost', secureCookies: false });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await new Promise(resolve => server.close(resolve)); service.close(); });
+  const url = 'http://127.0.0.1:' + server.address().port;
+  let cookie, csrf;
+  const request = (route, body, headers = {}) => fetch(url + route, { method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', ...(cookie ? { Cookie: cookie } : {}),
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+  assert.equal((await request('/api/game/state')).status, 401);
+  assert.equal((await request('/api/auth/register', { username: 'alice', password: 'long-test-password', registrationCode: 'test-code', consent: true }, { Origin: 'https://attacker.test' })).status, 403);
+  const registered = await request('/api/auth/register', { username: 'alice', password: 'long-test-password', registrationCode: 'test-code', consent: true });
+  assert.equal(registered.status, 201);
+  cookie = registered.headers.get('set-cookie').split(';')[0];
+  const me = await (await request('/api/auth/me')).json(); csrf = me.csrf;
+  assert.equal((await request('/api/game/predict', { requestId: 'no-csrf' }, { 'X-CSRF-Token': '' })).status, 403);
+  const input = { requestId: 'predict-1' };
+  const turn = await (await request('/api/game/predict', input)).json();
+  assert.ok(turn.id);
+  assert.equal(service.repository.get('SELECT count(*) AS n FROM turns').n, 1);
+  const participant = accounts.authenticate(cookie.split('=')[1]).participantId;
+  // The bot can answer the exact prediction committed on the web.
+  service.answer(participant, { turnId: turn.id, bit: 1, requestId: 'telegram-answer' });
+  assert.deepEqual(await (await request('/api/game/predict', input)).json(), turn);
+  assert.equal((await (await request('/api/game/state')).json()).total, 1);
+  await request('/api/game/session', { visibility: 'blind', requestId: 'blind-mode' });
+  const hidden = await (await request('/api/game/predict', { requestId: 'hidden-guess' })).json();
+  assert.equal(hidden.prediction, null); assert.equal(hidden.p1, null);
+  assert.equal((await request('/api/account/export')).status, 409);
+  const answered = { requestId: 'hidden-answer', turnId: hidden.id, bit: 0 };
+  assert.equal((await request('/api/game/answer', answered)).status, 200);
+  assert.equal((await request('/api/game/answer', answered)).status, 200);
+  assert.equal(service.getProgress(participant).total, 2);
+  assert.equal((await request('/api/account/export')).status, 200);
+  assert.equal((await request('/.env')).status, 404);
+  assert.equal((await request('/api/auth/logout', {})).status, 200);
+  assert.equal((await request('/api/game/state')).status, 401);
+  const another = await request('/api/auth/register', { username: 'bob', password: 'another-long-password', registrationCode: 'test-code', consent: true });
+  cookie = another.headers.get('set-cookie').split(';')[0];
+  csrf = (await (await request('/api/auth/me')).json()).csrf;
+  assert.equal((await (await request('/api/game/state')).json()).total, 0);
+  assert.equal((await request('/api/game/answer', { requestId: 'stolen-turn', turnId: hidden.id, bit: 0 })).status, 404);
+});

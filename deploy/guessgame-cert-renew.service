@@ -1,0 +1,7 @@
+[Unit]
+Description=Renew GuessGame TLS certificate
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/guessgame-certbot/bin/certbot renew --quiet --no-random-sleep-on-renew

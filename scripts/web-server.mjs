@@ -1,0 +1,11 @@
+import { GameService } from '../src/service/game-service.mjs';
+import { WebAccounts } from '../src/web/accounts.mjs';
+import { createWebServer } from '../src/web/server.mjs';
+const origin = process.env.PUBLIC_WEB_ORIGIN;
+if (!origin?.startsWith('https://') || new URL(origin).origin !== origin) throw new Error('HTTPS_WEB_ORIGIN_REQUIRED');
+const game = new GameService(process.env.TELEGRAM_DB_PATH || 'private/telegram.sqlite');
+const accounts = new WebAccounts(game, { registrationCode: process.env.WEB_REGISTRATION_CODE, consentText: process.env.WEB_CONSENT_TEXT });
+const server = createWebServer({ service: game, accounts, origin, trustProxy: true, botUsername: process.env.WEB_BOT_USERNAME || '' });
+server.requestTimeout = 15000; server.headersTimeout = 10000;
+server.listen(Number(process.env.WEB_PORT || 3000), '127.0.0.1', () => console.log('GuessGame web listening on loopback'));
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close(() => { game.close(); process.exit(0); }));
